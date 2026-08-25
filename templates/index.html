@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Document Verification
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+    <!-- =====================================================
+         SIDEBAR
+    ====================================================== -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                ✓
+            </div>
+
+            <div class="brand-text">
+                <strong>Document</strong>
+                <strong>Verification</strong>
+            </div>
+
+        </div>
+
+
+        <div class="section-title">
+            MAIN
+        </div>
+
+
+        <nav>
+
+            <a class="nav-item active">
+                <span>⌂</span>
+                Dashboard
+            </a>
+
+            <a class="nav-item">
+                <span>✓</span>
+                Verifications
+            </a>
+
+            <a class="nav-item">
+                <span>▣</span>
+                Documents
+            </a>
+
+            <a class="nav-item">
+                <span>≡</span>
+                Logs
+            </a>
+
+            <a class="nav-item">
+                <span>⚙</span>
+                Settings
+            </a>
+
+        </nav>
+
+
+        <div class="section-title help">
+            HELP
+        </div>
+
+
+        <nav>
+
+            <a class="nav-item">
+                <span>▤</span>
+                Documentation
+            </a>
+
+            <a class="nav-item">
+                <span>?</span>
+                Support
+            </a>
+
+        </nav>
+
+
+        <div class="developer">
+
+            <div class="avatar">
+                DV
+            </div>
+
+            <div class="developer-info">
+
+                <strong>
+                    Developer
+                </strong>
+
+                <small>
+                    Document Verification
+                </small>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+
+    <!-- =====================================================
+         MAIN
+    ====================================================== -->
+
+    <main class="main">
+
+        <header class="topbar">
+
+            <button
+                class="menu"
+                type="button"
+            >
+                ☰
+            </button>
+
+
+            <div class="header-actions">
+
+                <button
+                    type="button"
+                    class="header-icon"
+                >
+                    ◐
+                </button>
+
+                <button
+                    type="button"
+                    class="header-icon"
+                >
+                    ♢
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <section class="content">
+
+
+            <!-- =================================================
+                 UPLOAD AREA
+            ================================================== -->
+
+            <div class="heading">
+
+                <h1>
+                    Upload Marksheet
+                </h1>
+
+                <p>
+                    Upload a clear document for
+                    verification and data extraction.
+                </p>
+
+            </div>
+
+
+            <div
+                class="upload-box"
+                id="uploadBox"
+            >
+
+                <div class="upload-icon">
+                    ↑
+                </div>
+
+
+                <h2>
+                    Upload a clear image
+                </h2>
+
+
+                <p>
+                    JPG, JPEG or PNG
+                    <span>•</span>
+                    Max 10MB
+                </p>
+
+
+                <label
+                    for="fileInput"
+                    class="choose-button"
+                >
+                    Choose File
+                </label>
+
+
+                <input
+                    type="file"
+                    id="fileInput"
+                    accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.pdf,.docx"
+                    hidden
+                >
+
+
+                <div class="drag-text">
+                    or drag and drop here
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 STATUS
+            ================================================== -->
+
+            <div
+                id="status"
+                class="status hidden"
+            ></div>
+
+
+            <!-- =================================================
+                 RESULTS
+            ================================================== -->
+
+            <div
+                id="results"
+                class="results hidden"
+            >
+
+                <!-- =============================================
+                     RESULT TITLE
+                ============================================== -->
+
+                <div class="result-heading">
+
+                    <div>
+
+                        <div class="result-label">
+                            ✓ &nbsp; EXTRACTION COMPLETE
+                        </div>
+
+                        <h2>
+                            Extracted Document Details
+                        </h2>
+
+                    </div>
+
+
+                    <div
+                        id="resultDocumentBadge"
+                        class="document-badge"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+
+                <!-- =============================================
+                     DOCUMENT INFORMATION
+                ============================================== -->
+
+                <section class="result-card">
+
+                    <div class="card-title">
+
+                        <div class="card-title-icon">
+                            ▤
+                        </div>
+
+                        <h3>
+                            Document Information
+                        </h3>
+
+                    </div>
+
+
+                    <div class="information-grid">
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Document Type
+                            </span>
+
+                            <strong
+                                id="resultDocumentType"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Classification Confidence
+                            </span>
+
+                            <strong
+                                id="resultConfidence"
+                                class="green-value"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Exam Year
+                            </span>
+
+                            <strong
+                                id="resultExamYear"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Result
+                            </span>
+
+                            <strong
+                                id="resultResult"
+                                class="green-value"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                    </div>
+
+                </section>
+
+
+                <!-- =============================================
+                     STUDENT INFORMATION
+                ============================================== -->
+
+                <section class="result-card">
+
+                    <div class="card-title">
+
+                        <div class="card-title-icon">
+                            ♙
+                        </div>
+
+                        <h3>
+                            Student Information
+                        </h3>
+
+                    </div>
+
+
+                    <div class="information-grid">
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Name
+                            </span>
+
+                            <strong
+                                id="resultName"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Roll Number
+                            </span>
+
+                            <strong
+                                id="resultRollNumber"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Registration Number
+                            </span>
+
+                            <strong
+                                id="resultRegistration"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Date of Birth
+                            </span>
+
+                            <strong
+                                id="resultDOB"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Mother's Name
+                            </span>
+
+                            <strong
+                                id="resultMother"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="information-item">
+
+                            <span>
+                                Father's / Guardian's Name
+                            </span>
+
+                            <strong
+                                id="resultFather"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                    </div>
+
+                </section>
+
+
+                <!-- =============================================
+                     SCHOOL INFORMATION
+                ============================================== -->
+
+                <section class="result-card">
+
+                    <div class="card-title">
+
+                        <div class="card-title-icon">
+                            ♙
+                        </div>
+
+                        <h3>
+                            School Information
+                        </h3>
+
+                    </div>
+
+
+                    <div class="school-information">
+
+                        <span>
+                            School Name
+                        </span>
+
+                        <strong
+                            id="resultSchool"
+                        >
+                            —
+                        </strong>
+
+                    </div>
+
+                </section>
+
+
+                <!-- =============================================
+                     ACADEMIC SUMMARY
+                ============================================== -->
+
+                <section class="result-card">
+
+                    <div class="card-title">
+
+                        <div class="card-title-icon">
+                            ◒
+                        </div>
+
+                        <h3>
+                            Academic Summary
+                        </h3>
+
+                    </div>
+
+
+                    <div class="summary-grid">
+
+
+                        <div class="summary-item">
+
+                            <span>
+                                Total Marks
+                            </span>
+
+                            <strong
+                                id="resultTotalMarks"
+                                class="green-value"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="summary-item">
+
+                            <span>
+                                Maximum Marks
+                            </span>
+
+                            <strong
+                                id="resultMaximumMarks"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="summary-item">
+
+                            <span>
+                                Percentage
+                            </span>
+
+                            <strong
+                                id="resultPercentage"
+                                class="green-value"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="summary-item">
+
+                            <span>
+                                Subjects
+                            </span>
+
+                            <strong
+                                id="resultSubjects"
+                            >
+                                —
+                            </strong>
+
+                        </div>
+
+
+                    </div>
+
+                </section>
+
+
+                <!-- =============================================
+                     MARKS
+                ============================================== -->
+
+                <section class="result-card marks-card">
+
+                    <div class="card-title">
+
+                        <div class="card-title-icon">
+                            ▦
+                        </div>
+
+                        <h3>
+                            Marks
+                        </h3>
+
+                    </div>
+
+
+                    <div class="table-container">
+
+                        <table class="marks-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Subject
+                                    </th>
+
+                                    <th>
+                                        Code
+                                    </th>
+
+                                    <th>
+                                        Theory
+                                    </th>
+
+                                    <th>
+                                        IA / Practical
+                                    </th>
+
+                                    <th>
+                                        Total
+                                    </th>
+
+                                    <th>
+                                        Grade
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+
+                            <tbody
+                                id="marksTableBody"
+                            ></tbody>
+
+                        </table>
+
+                    </div>
+
+
+                    <div
+                        id="noMarks"
+                        class="no-marks hidden"
+                    >
+                        No subject marks were extracted.
+                    </div>
+
+                </section>
+
+
+                <!-- =============================================
+                     OCR TEXT
+                ============================================== -->
+
+                <details class="ocr-details">
+
+                    <summary>
+                        View complete extracted text
+                    </summary>
+
+                    <pre
+                        id="rawOCRText"
+                    ></pre>
+
+                </details>
+
+
+                <!-- =============================================
+                     UPLOAD ANOTHER
+                ============================================== -->
+
+                <button
+                    type="button"
+                    id="uploadAnother"
+                    class="upload-another"
+                >
+                    ↑ &nbsp; Upload Another Document
+                </button>
+
+
+            </div>
+
+
+            <!-- =================================================
+                 GUIDELINES
+            ================================================== -->
+
+            <div class="guidelines">
+
+                <div class="guideline-header">
+
+                    <span class="info">
+                        i
+                    </span>
+
+                    <strong>
+                        Image Quality Guidelines
+                    </strong>
+
+                </div>
+
+
+                <p>
+                    For best results, upload an image that:
+                </p>
+
+
+                <div class="checks">
+
+                    <div>
+                        <span>✓</span>
+                        Is clear and in focus
+                    </div>
+
+                    <div>
+                        <span>✓</span>
+                        Has proper lighting
+                    </div>
+
+                    <div>
+                        <span>✓</span>
+                        Shows the entire document
+                    </div>
+
+                    <div>
+                        <span>✓</span>
+                        Is not blurry
+                    </div>
+
+                </div>
+
+
+                <hr>
+
+
+                <h3>
+                    Why image quality matters?
+                </h3>
+
+
+                <p>
+                    Clear images allow the extraction
+                    system to accurately read marks,
+                    names and other document information.
+                </p>
+
+            </div>
+
+
+            <!-- =================================================
+                 FEATURES
+            ================================================== -->
+
+            <div class="features">
+
+                <div class="feature">
+
+                    <div class="feature-icon">
+                        ◇
+                    </div>
+
+                    <div>
+
+                        <h3>
+                            Secure & Private
+                        </h3>
+
+                        <p>
+                            Documents are processed
+                            securely.
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="feature">
+
+                    <div class="feature-icon">
+                        ⚡
+                    </div>
+
+                    <div>
+
+                        <h3>
+                            Fast Processing
+                        </h3>
+
+                        <p>
+                            Quality checks happen
+                            before OCR.
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="feature">
+
+                    <div class="feature-icon">
+                            ◎
+                    </div>
+
+                    <div>
+
+                        <h3>
+                            Reliable Extraction
+                        </h3>
+
+                        <p>
+                            Better images produce
+                            better results.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<script src="/static/app.js"></script>
+
+</body>
+
+</html>

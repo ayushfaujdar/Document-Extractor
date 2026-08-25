@@ -1,0 +1,137 @@
+{
+    "document": {
+        "document_type": "Unknown",
+        "board": "CBSE",
+        "exam_year": 2023
+    },
+    "student": {
+        "name": null,
+        "roll_number": "17624292",
+        "registration_number": "H223/44532/0013",
+        "date_of_birth": null,
+        "mother_name": "POONAM DEVI",
+        "father_name": "PREM SHANKAR"
+    },
+    "school": {
+        "name": null,
+        "code": null
+    },
+    "academic": {
+        "subjects": [
+            {
+                "subject_code": "301",
+                "subject": "ENGLISH CORE",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": null,
+                "raw_ocr_row": [
+                    "ENGLISH CORE"
+                ],
+                "validation": {}
+            },
+            {
+                "subject_code": "041",
+                "subject": "MATHEMATICS",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": null,
+                "raw_ocr_row": [
+                    "MATHEMATICS"
+                ],
+                "validation": {}
+            },
+            {
+                "subject_code": "042",
+                "subject": "PHYSICS",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": null,
+                "raw_ocr_row": [
+                    "PHYSICS"
+                ],
+                "validation": {}
+            },
+            {
+                "subject_code": "043",
+                "subject": "CHEMISTRY",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": null,
+                "raw_ocr_row": [
+                    "CHEMISTRY"
+                ],
+                "validation": {}
+            },
+            {
+                "subject_code": "083",
+                "subject": "COMPUTER SCIENCE",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": null,
+                "raw_ocr_row": [
+                    "COMPUTER SCENCE"
+                ],
+                "validation": {}
+            },
+            {
+                "subject_code": "500",
+                "subject": "WORK EXPERIENCE",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": "A1",
+                "raw_ocr_row": [
+                    "WORK EXPERENCE",
+                    "A1"
+                ],
+                "validation": {}
+            },
+            {
+                "subject_code": "502",
+                "subject": "HEALTH & PHYSICAL EDUCATION",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": "A1",
+                "raw_ocr_row": [
+                    "HEALTH & PHYSICAL EDUCATION",
+                    "A1"
+                ],
+                "validation": {}
+            },
+            {
+                "subject_code": "503",
+                "subject": "GENERAL STUDIES",
+                "theory": null,
+                "internal_or_practical": null,
+                "total": null,
+                "grade": "A1",
+                "raw_ocr_row": [
+                    "GENERAL STLDIES",
+                    "A1",
+                    "m Result PASS",
+                    "r'Oa",
+                    "frea Datd:",
+                    "12-05-2023",
+                    "CeatrsberalEcsmies",
+                    "an"
+                ],
+                "validation": {}
+            }
+        ],
+        "summary": {
+            "reliable": false,
+            "subjects_found": 0,
+            "total_marks": null,
+            "percentage": null
+        }
+    },
+    "result": "PASS",
+    "result_date": "12-05-2023",
+    "raw_ocr_text": "99014.00001\n0471967\nrfx.s.\nRagn.Ne.\nH223/44532/0013\n0171967\nCENTRAL BOARD OF SECONDARYEDUCATION\nMARKS STATEMENT CUM CERTIFICATE\n2023\nSENIOR SCHOOLCERTIFICATE EXAMINATION,2023\nTais to.ceniyt\nAYUSHKUMAR\nRoll No\n17624292\nMotaer'sName\nPOONAMDEVI\nFatbers/GaandisssNaroe PREM SHANKAR\nSchook\n9014 KENDRYA VIDYALAYAC-2JANAKPURI NEWDELH\n. ss sr   aeed ScboastcAchieycmen as cee\nHINTE-MARKSOHTAENED\nRefeer\nSURJECT\n/ER\n(e4)\nGEADE\nCODE\nTHEDRY\nL/IA\nTOTAL\nTOTALONWORDS\n301\nENOLISM CORE\n058\n020\n076\nSEVENTYEIGHT\nB2\n041\nMATHEMATICS\n039\n020\n059\nFIFTY NINE\nC1\n042\nPHYSICS\n039\n026\n055\nSIXTYFIVE\nB2\n043\nCHEMISTRY\n031\n029\n05O\nSOXTY\nC2\n083\nCOMPUTER SCENCE\n030\nOCO\n060\nSIXTY\n01\n045\nPHYSICAL EDUCATION\n046\n029\n075\nSEVENTYFIVE\nC1\n500\nWORK EXPERENCE\nA1\n502\nHEALTHAPHYSICAL EDUCATION\nA1\n503\nGENERAL STLDIES\nA1\nm Resl PASS\nr'Oa\nfrea Datd:\n12-05-2023\nCeatrsberalEcsmies\nan"
+}
