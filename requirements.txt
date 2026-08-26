@@ -1,0 +1,9 @@
+Flask
+Werkzeug
+Pillow
+pytesseract
+paddlepaddle==2.6.2
+paddleocr
+opencv-python
+numpy
+PyMuPDF
