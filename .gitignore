@@ -18,6 +18,8 @@ storage/
 # OCR/model caches
 .paddleocr/
 .paddlex/
+.ipynb_checkpoints/
+:memory:.ses
 
 # Test and tool caches
 .pytest_cache/

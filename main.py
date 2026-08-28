@@ -1,6 +1,7 @@
 from __future__ import annotations
 from app.ocr.module3_ocr import extract_text
 import json
+import os
 import re
 import subprocess
 import sys
@@ -77,13 +78,15 @@ app.config[
 # ------------------------------------------------------------
 # OCR workers
 #
-# 1 = safest / lowest memory
-# 2 = faster for multi-page PDFs
-#
-# Your Aadhaar PDF has 2 pages, so 2 is useful.
+# ONNX Runtime already parallelizes each inference session. Keeping one
+# application worker avoids CPU oversubscription and concurrent access to one
+# OCR session. Benchmark a target machine before increasing this value.
 # ------------------------------------------------------------
 
-OCR_WORKERS = 2
+try:
+    OCR_WORKERS = max(1, int(os.getenv("OCR_WORKERS", "1")))
+except ValueError:
+    OCR_WORKERS = 1
 
 
 # ============================================================
@@ -2132,12 +2135,30 @@ def upload():
 
 if __name__ == "__main__":
 
+    debug = os.getenv("FLASK_DEBUG", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    try:
+        port = int(os.getenv("PORT", "8000"))
+    except ValueError:
+        port = 8000
+
     app.run(
 
-        host="0.0.0.0",
+        # Localhost is the safe default for an app handling identity records.
+        # Set HOST=0.0.0.0 explicitly only when LAN/container access is needed.
+        host=os.getenv("HOST", "127.0.0.1"),
 
-        port=8000,
+        port=port,
 
-        debug=True,
+        debug=debug,
+
+        # The reloader imports the module twice and therefore loads the OCR
+        # models twice. Enable it explicitly only for ordinary Flask work.
+        use_reloader=debug,
 
     )

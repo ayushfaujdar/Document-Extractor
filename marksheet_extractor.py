@@ -1,20 +1,12 @@
 import os
 import re
 import json
+import sys
 import cv2
 import numpy as np
 import pymupdf
-from paddleocr import PaddleOCR
 
-
-# ============================================================
-# OCR
-# ============================================================
-
-ocr = PaddleOCR(
-    use_angle_cls=True,
-    lang="en"
-)
+from app.ocr.module3_ocr import extract_text_from_array
 
 
 # ============================================================
@@ -106,38 +98,9 @@ def check_image_quality(image):
 # ============================================================
 
 def run_ocr(image):
+    """Use the shared PaddleOCR 3.x/ONNX adapter for this legacy CLI."""
 
-    result = ocr.ocr(
-        image,
-        cls=True
-    )
-
-    lines = []
-
-    if not result:
-        return lines
-
-    for page in result:
-
-        if not page:
-            continue
-
-        for item in page:
-
-            box = item[0]
-            text = item[1][0]
-            confidence = float(item[1][1])
-
-            lines.append({
-                "text": text.strip(),
-                "confidence": round(
-                    confidence,
-                    4
-                ),
-                "box": box
-            })
-
-    return lines
+    return extract_text_from_array(image, "marksheet_extractor")["text"]
 
 
 # ============================================================
@@ -247,33 +210,37 @@ def extract_roll_number(text):
 def detect_board(text):
 
     t = text.lower()
+    compact = re.sub(
+        r"[^a-z]",
+        "",
+        t,
+    )
 
     if (
-        "central board of secondary education"
-        in t
+        "centralboardofsecondaryeducation"
+        in compact
     ):
         return "CBSE"
 
-    if "cbse" in t:
+    if "cbse" in compact:
         return "CBSE"
 
     if (
-        "madhyamik shiksha parishad"
-        in t
+        "madhyamikshikshaparishad"
+        in compact
     ):
         return "UP Board"
 
     if (
-        "uttar pradesh"
-        in t and
-        "board" in t
+        "uttarpradesh" in compact
+        and "board" in compact
     ):
         return "UP Board"
 
-    if "icse" in t:
+    if "icse" in compact:
         return "ICSE"
 
-    if "cisce" in t:
+    if "cisce" in compact:
         return "CISCE"
 
     return "Unknown"
@@ -687,7 +654,14 @@ def extract_marksheet(file_path):
 
 if __name__ == "__main__":
 
-    file_path = "cropped_document.jpg"
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    default_file_path = os.path.join(
+        project_root,
+        "images",
+        "cropped_document.jpg",
+    )
+    file_path = sys.argv[1] if len(sys.argv) > 1 else default_file_path
+    output_path = sys.argv[2] if len(sys.argv) > 2 else None
 
     if not os.path.exists(
         file_path
@@ -727,24 +701,25 @@ if __name__ == "__main__":
             )
         )
 
-        with open(
-            "marksheet_result.json",
-            "w",
-            encoding="utf-8"
-        ) as file:
+        if output_path:
+            with open(
+                output_path,
+                "w",
+                encoding="utf-8"
+            ) as file:
 
-            json.dump(
-                result,
-                file,
-                indent=4,
-                ensure_ascii=False,
-                default=lambda x: x.item() if hasattr(x, "item") else str(x)
+                json.dump(
+                    result,
+                    file,
+                    indent=4,
+                    ensure_ascii=False,
+                    default=lambda x: x.item() if hasattr(x, "item") else str(x)
+                )
+
+            print(
+                "\nSaved to:"
             )
 
-        print(
-            "\nSaved to:"
-        )
-
-        print(
-            "marksheet_result.json"
-        )
+            print(
+                output_path
+            )

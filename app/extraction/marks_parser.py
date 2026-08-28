@@ -143,34 +143,122 @@ def find_table_start(items):
     return None
 
 
+def _header_x(items, table_start_y, predicate):
+    """Return the x-center of the nearest matching table header."""
+
+    candidates = [
+        item
+        for item in items
+        if table_start_y - 35 <= item["y"] <= table_start_y + 115
+        and predicate(item["text"])
+    ]
+
+    if not candidates:
+        return None
+
+    return min(
+        candidates,
+        key=lambda item: abs(item["y"] - table_start_y),
+    )["x"]
+
+
+def find_column_centers(items, table_start_y):
+    """Infer table columns from OCR'd headers instead of fixed image pixels."""
+
+    def exact_header(name):
+        return lambda text: text.upper().strip() == name
+
+    def internal_header(text):
+        normalized = re.sub(
+            r"[^A-Z]",
+            "",
+            text.upper().replace("1", "I"),
+        )
+        return (
+            "IA" in normalized
+            or normalized == "PR"
+            or "PR" in normalized
+        )
+
+    centers = {
+        "code": _header_x(
+            items,
+            table_start_y,
+            exact_header("CODE"),
+        ),
+        "subject": _header_x(
+            items,
+            table_start_y,
+            exact_header("SUBJECT"),
+        ),
+        "theory": _header_x(
+            items,
+            table_start_y,
+            exact_header("THEORY"),
+        ),
+        "internal_or_practical": _header_x(
+            items,
+            table_start_y,
+            internal_header,
+        ),
+        "total": _header_x(
+            items,
+            table_start_y,
+            exact_header("TOTAL"),
+        ),
+        "grade": _header_x(
+            items,
+            table_start_y,
+            exact_header("GRADE"),
+        ),
+    }
+
+    return {
+        name: center
+        for name, center in centers.items()
+        if center is not None
+    }
+
+
 # =========================================================
 # SUBJECT CODES
 # =========================================================
 
-def is_code(item):
+def is_code(item, code_x=None, max_x=None):
 
     text = item["text"].strip()
 
-    return (
-        SUBJECT_CODE_PATTERN.fullmatch(text)
-        is not None
-        and 40 <= item["x"] <= 120
-    )
+    if SUBJECT_CODE_PATTERN.fullmatch(text) is None:
+        return False
+
+    if code_x is not None:
+        return abs(item["x"] - code_x) <= max(40, code_x * 0.2)
+
+    if max_x is not None:
+        return item["x"] <= max_x * 0.2
+
+    return 40 <= item["x"] <= 120
 
 
 def find_subject_codes(
     items,
-    table_start_y
+    table_start_y,
+    code_x=None,
 ):
 
     codes = []
+
+    max_x = max(
+        (item["x"] for item in items),
+        default=0,
+    )
 
     for item in items:
 
         if item["y"] < table_start_y:
             continue
 
-        if not is_code(item):
+        if not is_code(item, code_x, max_x):
             continue
 
         codes.append(item)
@@ -218,7 +306,8 @@ def get_subject_name(
     items,
     code,
     row_upper,
-    row_lower
+    row_lower,
+    column_centers=None,
 ):
 
     candidates = []
@@ -232,10 +321,27 @@ def get_subject_name(
         ):
             continue
 
-        # Subject column.
-        if not (
-            110 <= item["x"] < 340
-        ):
+        centers = column_centers or {}
+        subject_x = centers.get("subject")
+        code_x = centers.get("code", code["x"])
+        theory_x = centers.get("theory")
+
+        if subject_x is not None and theory_x is not None:
+            # Subject text is usually left-aligned, while the header is
+            # centered. Use a wider column than a strict midpoint so short
+            # names such as SCIENCE are not discarded.
+            subject_left = code_x + (
+                subject_x - code_x
+            ) * 0.15
+            subject_right = subject_x + (
+                theory_x - subject_x
+            ) * 0.8
+        else:
+            # Compatibility fallback for old OCR files without headers.
+            subject_left = 110
+            subject_right = 340
+
+        if not subject_left <= item["x"] < subject_right:
             continue
 
         text = item["text"].strip()
@@ -277,23 +383,95 @@ def get_subject_name(
 # ROW BOUNDARIES
 # =========================================================
 
+def _row_anchor_y(code, codes, items, column_centers):
+    """Estimate a row's visual center despite OCR baseline differences."""
+
+    if not column_centers:
+        return code["y"]
+
+    code_y = code["y"]
+    index = codes.index(code)
+    neighboring_distances = []
+
+    if index > 0:
+        neighboring_distances.append(
+            code_y - codes[index - 1]["y"]
+        )
+    if index + 1 < len(codes):
+        neighboring_distances.append(
+            codes[index + 1]["y"] - code_y
+        )
+
+    search_window = max(
+        50,
+        *neighboring_distances,
+    )
+    offsets = []
+
+    for column in (
+        "subject",
+        "theory",
+        "internal_or_practical",
+        "total",
+        "grade",
+    ):
+        center = column_centers.get(column)
+        if center is None:
+            continue
+
+        tolerance = max(45, center * 0.05)
+        candidates = [
+            item
+            for item in items
+            if code_y - search_window <= item["y"] <= code_y
+            and abs(item["x"] - center) <= tolerance
+        ]
+
+        if candidates:
+            nearest = max(candidates, key=lambda item: item["y"])
+            offsets.append(code_y - nearest["y"])
+
+    if not offsets:
+        return code_y
+
+    offsets.sort()
+    middle = len(offsets) // 2
+    if len(offsets) % 2:
+        offset = offsets[middle]
+    else:
+        offset = (offsets[middle - 1] + offsets[middle]) / 2
+
+    return code_y - offset
+
 def get_row_boundaries(
     codes,
-    index
+    index,
+    items=None,
+    column_centers=None,
 ):
 
     code = codes[index]
 
-    y = code["y"]
+    row_anchors = [
+        _row_anchor_y(
+            current,
+            codes,
+            items or [],
+            column_centers or {},
+        )
+        for current in codes
+    ]
+
+    y = row_anchors[index]
 
     previous_y = (
-        codes[index - 1]["y"]
+        row_anchors[index - 1]
         if index > 0
         else None
     )
 
     next_y = (
-        codes[index + 1]["y"]
+        row_anchors[index + 1]
         if index + 1 < len(codes)
         else None
     )
@@ -359,7 +537,8 @@ def build_row(
 
 def extract_marks(
     row_items,
-    row_y
+    row_y,
+    column_centers=None,
 ):
 
     theory = []
@@ -375,36 +554,72 @@ def extract_marks(
         value = numeric(text)
 
         if value is not None:
+            centers = column_centers or {}
+            mark_centers = {
+                key: centers[key]
+                for key in (
+                    "theory",
+                    "internal_or_practical",
+                    "total",
+                )
+                if key in centers
+            }
 
-            # -------------------------------------------------
-            # Theory column
-            # -------------------------------------------------
+            if mark_centers:
+                nearest = min(
+                    mark_centers,
+                    key=lambda key: abs(x - mark_centers[key]),
+                )
+                sorted_centers = sorted(mark_centers.values())
+                nearest_distance = abs(
+                    x - mark_centers[nearest]
+                )
 
-            if 340 <= x < 410:
+                if len(sorted_centers) == 1:
+                    tolerance = 60
+                else:
+                    nearest_gap = min(
+                        abs(mark_centers[nearest] - other)
+                        for other in sorted_centers
+                        if other != mark_centers[nearest]
+                    )
+                    tolerance = max(60, nearest_gap * 0.48)
 
-                theory.append(item)
+                if nearest_distance > tolerance:
+                    continue
 
-            # -------------------------------------------------
-            # IA / Practical column
-            # -------------------------------------------------
+                if nearest == "theory":
+                    theory.append(item)
+                elif nearest == "internal_or_practical":
+                    internal.append(item)
+                else:
+                    total.append(item)
 
-            elif 410 <= x < 470:
-
-                internal.append(item)
-
-            # -------------------------------------------------
-            # Total column
-            # -------------------------------------------------
-
-            elif 470 <= x < 530:
-
-                total.append(item)
+            else:
+                # Compatibility fallback for older OCR files without headers.
+                if 340 <= x < 410:
+                    theory.append(item)
+                elif 410 <= x < 470:
+                    internal.append(item)
+                elif 470 <= x < 530:
+                    total.append(item)
 
         # -----------------------------------------------------
         # Grade column
         # -----------------------------------------------------
 
-        if 620 <= x <= 720:
+        grade_x = (column_centers or {}).get("grade")
+        grade_tolerance = 90
+        if grade_x is not None:
+            grade_tolerance = max(90, grade_x * 0.08)
+
+        if (
+            (grade_x is None and 620 <= x <= 720)
+            or (
+                grade_x is not None
+                and abs(x - grade_x) <= grade_tolerance
+            )
+        ):
 
             if GRADE_PATTERN.fullmatch(
                 text.upper()
@@ -470,7 +685,8 @@ def parse_row(
     row_items,
     all_items,
     row_upper,
-    row_lower
+    row_lower,
+    column_centers=None,
 ):
 
     code_y = code["y"]
@@ -480,11 +696,13 @@ def parse_row(
         code,
         row_upper,
         row_lower,
+        column_centers,
     )
 
     marks = extract_marks(
         row_items,
         code_y,
+        column_centers,
     )
 
     theory = marks["theory"]
@@ -625,9 +843,15 @@ def parse_marks_table(
             },
         }
 
+    column_centers = find_column_centers(
+        items,
+        table_start_y,
+    )
+
     codes = find_subject_codes(
         items,
         table_start_y,
+        column_centers.get("code"),
     )
 
     if not codes:
@@ -681,7 +905,9 @@ def parse_marks_table(
         row_upper, row_lower = (
             get_row_boundaries(
                 codes,
-                index
+                index,
+                items,
+                column_centers,
             )
         )
 
@@ -701,6 +927,7 @@ def parse_marks_table(
             items,
             row_upper,
             row_lower,
+            column_centers,
         )
 
         # -------------------------------------------------

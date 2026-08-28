@@ -3,11 +3,13 @@ Werkzeug==3.1.8
 Pillow==12.3.0
 pytesseract==0.3.13
 
-# Compatible OCR 2.x pair used by app/ocr/module3_ocr.py
-paddlepaddle==2.6.2
-paddleocr==2.10.0
+# PaddleOCR 3.7 uses PaddleX and its ONNX Runtime inference engine.
+# This avoids the architecture-specific PaddlePaddle runtime on macOS.
+paddleocr==3.7.0
+onnxruntime==1.29.0
 
-# PaddlePaddle 2.6.x uses the NumPy 1.x API.
-numpy==1.26.4
-opencv-python==4.11.0.86
+# PaddleX's OCR core requires this exact OpenCV distribution/version.
+# Do not install opencv-python or opencv-python-headless alongside it.
+numpy==2.3.5
+opencv-contrib-python==4.10.0.84
 PyMuPDF==1.28.2
