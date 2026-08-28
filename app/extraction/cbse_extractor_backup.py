@@ -138,57 +138,45 @@ def extract_roll_number(items):
 
 def extract_dob(items):
     """
-    Extract DOB only from the OCR item containing the
-    Date of Birth label.
+    Extract DOB ONLY from a line containing a DOB label.
+
+    This prevents the extractor from incorrectly taking:
+        Dated 15/07/2020
+
+    as the student's DOB.
 
     Example:
         Date of Birth24/03/200424TH MARCH TWO THOUSANDFOUR
 
     -> 24/03/2004
-
-    IMPORTANT:
-    We never search the entire document for the first date,
-    because that can incorrectly return the certificate date.
     """
 
-    date_pattern = r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})"
+    date_pattern = r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b"
 
     for item in items:
 
         text = clean_text(item["text"])
 
-        # Normalize common OCR errors.
-        normalized = re.sub(
-            r"\s+",
-            " ",
-            text.upper()
-        )
+        # OCR can produce:
+        # Date of Birth
+        # Date 0f Birth
+        # Date 0fBirth
+        # DateofBirth
 
-        normalized = normalized.replace(
-            "0F",
-            "OF"
-        )
-
-        # Must contain the DOB label.
         if not re.search(
-            r"DATE\s*OF\s*BIRTH|DATEOF\s*BIRTH",
-            normalized,
+            r"DATE\s*(?:OF|0F)?\s*BIRTH",
+            text,
             re.I
         ):
             continue
 
-        match = re.search(
-            date_pattern,
-            text
-        )
+        match = re.search(date_pattern, text)
 
         if match:
-            return match.group(1).replace(
-                "-",
-                "/"
-            )
+            return match.group(1).replace("-", "/")
 
     return None
+
 
 # ============================================================
 # EXAMINATION YEAR
@@ -797,81 +785,64 @@ def get_items_near_y(items, y, tolerance=14):
 # ============================================================
 
 def extract_marks(items):
+
     """
-    Extract CBSE marks using the actual PaddleOCR coordinates.
+    Extract CBSE marks using subject-code anchors.
 
-    CBSE layout:
+    Typical row:
 
-        CODE
-        SUBJECT
-                         THEORY   IA/PR   TOTAL   WORDS   GRADE
+    184
+    ENGLISH LNG & LIT.
+    076
+    020
+    096
+    NINETY SIX
+    A1
 
-    For the documents tested, the columns are approximately:
+    Coordinates:
 
-        THEORY       x = 408-434
-        IA/PR        x = 463-488
-        TOTAL        x = 511-537
-        GRADE        x = 685-707
-
-    We therefore map values by their X position instead of
-    simply taking the first three numbers found on a row.
+    CODE   SUBJECT       THEORY   IA/PR   TOTAL   WORDS   GRADE
     """
 
-    # --------------------------------------------------------
-    # Find subject-code candidates
-    # --------------------------------------------------------
-
-    subject_items = []
+    subjects = []
 
     for item in items:
 
-        text = item["text"].strip()
+        code = item["text"].strip()
 
         if not re.fullmatch(
             r"\d{3}",
-            text
+            code
         ):
             continue
 
-        if text not in CBSE_SUBJECTS:
+        if code not in CBSE_SUBJECTS:
             continue
 
-        subject_items.append(item)
+        subjects.append(item)
 
     results = []
 
     used_codes = set()
 
-    # --------------------------------------------------------
-    # Process each subject
-    # --------------------------------------------------------
-
-    for code_item in subject_items:
+    for code_item in subjects:
 
         code = code_item["text"].strip()
 
         if code in used_codes:
             continue
 
-        row_y = code_item["cy"]
+        y = code_item["cy"]
+
+        row_items = get_items_near_y(
+            items,
+            y,
+            tolerance=14
+        )
 
         # ----------------------------------------------------
-        # Get items belonging to this row
+        # Subject
         # ----------------------------------------------------
-
-        row_items = []
-
-        for item in items:
-
-            if abs(item["cy"] - row_y) <= 13:
-
-                row_items.append(item)
-
-        # ----------------------------------------------------
-        # SUBJECT
-        # ----------------------------------------------------
-
-        subject = None
 
         subject_candidates = []
 
@@ -880,50 +851,50 @@ def extract_marks(items):
             if item is code_item:
                 continue
 
-            text = item["text"].strip()
+            if item["cx"] <= code_item["x2"]:
+                continue
 
-            # Subject is between code and marks.
-            if (
-                item["x1"] > code_item["x2"]
-                and item["x1"] < 330
+            value = item["text"].strip()
+
+            if value.upper() in (
+                "THEORY",
+                "TOTAL",
+                "GRADE",
+                "SUBJECT",
             ):
+                continue
 
-                if not re.fullmatch(
-                    r"\d+",
-                    text
-                ):
+            # Subject is generally located between
+            # code and marks columns.
+            if item["cx"] < 330:
+                subject_candidates.append(item)
 
-                    subject_candidates.append(
-                        item
-                    )
+        subject_candidates.sort(
+            key=lambda x: abs(x["cy"] - y)
+        )
+
+        subject = None
 
         if subject_candidates:
 
-            subject_candidates.sort(
-                key=lambda x: abs(
-                    x["cy"] - row_y
-                )
-            )
+            subject = subject_candidates[0]["text"]
 
-            subject = subject_candidates[0][
-                "text"
-            ]
-
-        if not subject:
+        else:
 
             subject = CBSE_SUBJECTS.get(
                 code
             )
 
         # ----------------------------------------------------
-        # NUMERIC COLUMN EXTRACTION
+        # Numeric columns
         # ----------------------------------------------------
 
-        theory = None
-        internal = None
-        total = None
+        numeric = []
 
         for item in row_items:
+
+            if item is code_item:
+                continue
 
             text = item["text"].strip()
 
@@ -935,7 +906,6 @@ def extract_marks(items):
 
             value = int(text)
 
-            # Ignore impossible marks.
             if value > 100:
                 continue
 
@@ -943,46 +913,79 @@ def extract_marks(items):
             if value == int(code):
                 continue
 
-            x = item["cx"]
+            numeric.append(
+                (
+                    item["cx"],
+                    value,
+                    item
+                )
+            )
 
-            # ------------------------------------------------
-            # THEORY
-            # ------------------------------------------------
-            #
-            # Actual PaddleOCR coordinates:
-            # ~420
-            #
-            if 395 <= x < 450:
+        # Sort left -> right.
+        numeric.sort(
+            key=lambda x: x[0]
+        )
 
+        # Expected columns:
+        #
+        # theory     ~ 350-390
+        # IA/PR      ~ 410-450
+        # total      ~ 460-500
+        #
+        theory = None
+        internal = None
+        total = None
+
+        for x, value, item in numeric:
+
+            if 330 <= x < 405:
                 if theory is None:
                     theory = value
 
-            # ------------------------------------------------
-            # INTERNAL / PRACTICAL
-            # ------------------------------------------------
-            #
-            # Actual coordinates:
-            # ~475
-            #
-            elif 450 <= x < 500:
-
+            elif 405 <= x < 455:
                 if internal is None:
                     internal = value
 
-            # ------------------------------------------------
-            # TOTAL
-            # ------------------------------------------------
-            #
-            # Actual coordinates:
-            # ~525
-            #
-            elif 500 <= x < 555:
-
+            elif 455 <= x < 505:
                 if total is None:
                     total = value
 
         # ----------------------------------------------------
-        # GRADE
+        # Fallback if coordinate boundaries vary.
+        # ----------------------------------------------------
+
+        if (
+            theory is None
+            or internal is None
+            or total is None
+        ):
+
+            ordered_values = [
+                value
+                for _, value, _ in numeric
+            ]
+
+            # Remove duplicate possibilities.
+            unique_values = []
+
+            for value in ordered_values:
+
+                if value not in unique_values:
+                    unique_values.append(value)
+
+            if len(unique_values) >= 3:
+
+                if theory is None:
+                    theory = unique_values[0]
+
+                if internal is None:
+                    internal = unique_values[1]
+
+                if total is None:
+                    total = unique_values[2]
+
+        # ----------------------------------------------------
+        # Grade
         # ----------------------------------------------------
 
         grade = None
@@ -996,41 +999,29 @@ def extract_marks(items):
                 text
             ):
 
+                # Grade is usually far right.
                 if item["cx"] >= 620:
-
                     grade = text
                     break
 
         # ----------------------------------------------------
-        # Validation
+        # Subject-specific fallback
         # ----------------------------------------------------
 
-        # If all three values are present, verify:
-        #
-        # theory + internal == total
-        #
-        # This is important for document verification.
-        if (
-            theory is not None
-            and internal is not None
-            and total is not None
-        ):
+        if subject is None:
+            subject = CBSE_SUBJECTS.get(code)
 
-            expected = (
-                theory +
-                internal
+        # ----------------------------------------------------
+        # Additional subject row
+        # ----------------------------------------------------
+
+        if subject:
+            subject = clean_text(
+                subject
             )
 
-            if expected != total:
-
-                # Do NOT silently modify the OCR result.
-                #
-                # Leave the extracted values intact.
-                # Validation can flag this later.
-                pass
-
         # ----------------------------------------------------
-        # Only create a marks row if actual marks exist.
+        # Prevent fake row creation.
         # ----------------------------------------------------
 
         if (
@@ -1038,11 +1029,15 @@ def extract_marks(items):
             and internal is None
             and total is None
         ):
+
+            # Some rows such as:
+            # SOCIAL SCIENCE 087 ADDITIONAL SUBJECT
+            # may not contain marks.
             continue
 
         results.append({
             "subject_code": code,
-            "subject": clean_text(subject),
+            "subject": subject,
             "theory": theory,
             "internal_or_practical": internal,
             "total": total,
@@ -1052,6 +1047,8 @@ def extract_marks(items):
         used_codes.add(code)
 
     return results
+
+
 # ============================================================
 # MARKS SUMMARY
 # ============================================================

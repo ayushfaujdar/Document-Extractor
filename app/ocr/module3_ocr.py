@@ -1,234 +1,324 @@
+import os
 import json
-import sys
-from pathlib import Path
+import time
 
+import cv2
 from paddleocr import PaddleOCR
 
 
 # ============================================================
-# OCR ENGINE
-#
+# GLOBAL OCR MODEL
+# ============================================================
 # IMPORTANT:
-# This object is created ONLY ONCE when this module is loaded.
+# Load PaddleOCR ONLY ONCE.
 #
-# Do NOT create PaddleOCR inside extract_text().
+# Do NOT create PaddleOCR() inside extract_text().
+# Creating/loading the model for every page/request is expensive.
 # ============================================================
 
 print("[OCR] Loading PaddleOCR model...")
 
-_ocr = PaddleOCR(
-    use_angle_cls=True,
+OCR_ENGINE = PaddleOCR(
+    use_angle_cls=False,
     lang="en",
-    show_log=False
+    show_log=False,
+
+    # Detection
+    det_algorithm="DB",
+    det_db_thresh=0.3,
+    det_db_box_thresh=0.5,
+    det_db_unclip_ratio=1.6,
+
+    # Keep enough resolution for documents.
+    # Do NOT aggressively resize the image.
+    det_limit_side_len=1280,
+
+    # Recognition
+    rec_algorithm="CRNN",
+    rec_batch_num=6,
 )
 
 print("[OCR] PaddleOCR model loaded.")
 
 
 # ============================================================
-# OCR FUNCTION
+# IMAGE PREPARATION
+# ============================================================
+
+def prepare_image(image_path):
+    """
+    Load the original image without destroying document detail.
+
+    We intentionally do NOT:
+        - grayscale aggressively
+        - threshold
+        - sharpen heavily
+        - resize to tiny dimensions
+        - compress the image
+
+    PaddleOCR's detector works best when it receives
+    reasonably clean document pixels.
+    """
+
+    image = cv2.imread(image_path)
+
+    if image is None:
+        raise ValueError(
+            f"Unable to read image: {image_path}"
+        )
+
+    return image
+
+
+# ============================================================
+# NORMALIZE PADDLEOCR OUTPUT
+# ============================================================
+
+def normalize_ocr_result(result):
+    """
+    Convert PaddleOCR's output into our project's format:
+
+    {
+        "text": [
+            {
+                "text": "...",
+                "confidence": 0.98,
+                "box": [...]
+            }
+        ]
+    }
+
+    This preserves BOTH:
+        1. recognized text
+        2. spatial coordinates
+
+    The coordinates are important for extracting fields such as:
+
+        Father's / Guardian's Name
+        Mother's Name
+        School
+        marks-table columns
+    """
+
+    output = []
+
+    if not result:
+        return output
+
+    # PaddleOCR 2.x commonly returns:
+    #
+    # [
+    #     [
+    #         [box, (text, confidence)],
+    #         [box, (text, confidence)]
+    #     ]
+    # ]
+
+    for page in result:
+
+        if not page:
+            continue
+
+        for item in page:
+
+            if not item or len(item) < 2:
+                continue
+
+            box = item[0]
+            recognition = item[1]
+
+            if not recognition or len(recognition) < 2:
+                continue
+
+            text = str(
+                recognition[0]
+            ).strip()
+
+            try:
+                confidence = float(
+                    recognition[1]
+                )
+            except Exception:
+                confidence = 0.0
+
+            if not text:
+                continue
+
+            # Convert coordinates to normal Python floats.
+            normalized_box = []
+
+            for point in box:
+
+                if len(point) >= 2:
+
+                    normalized_box.append([
+                        float(point[0]),
+                        float(point[1])
+                    ])
+
+            output.append({
+                "text": text,
+                "confidence": confidence,
+                "box": normalized_box
+            })
+
+    return output
+
+
+# ============================================================
+# MAIN OCR FUNCTION
 # ============================================================
 
 def extract_text(image_path):
+    """
+    Run PaddleOCR on one document page.
 
-    image_path = Path(
-        image_path
-    )
+    Returns structured OCR information while preserving
+    bounding boxes and confidence scores.
+    """
 
+    start = time.perf_counter()
 
-    if not image_path.exists():
+    image = prepare_image(image_path)
 
-        raise FileNotFoundError(
-            f"Image not found: {image_path}"
-        )
-
-
-    if not image_path.is_file():
-
-        raise ValueError(
-            f"Image path is not a file: {image_path}"
-        )
-
+    height, width = image.shape[:2]
 
     # --------------------------------------------------------
-    # Run OCR
+    # PaddleOCR
+    # --------------------------------------------------------
     #
-    # IMPORTANT:
-    # The existing _ocr object is reused.
+    # Angle classifier is disabled because your documents are
+    # normally upright and disabling it removes one expensive
+    # processing stage.
+    #
+    # If we later receive rotated documents, we can selectively
+    # enable angle handling rather than slowing every document.
     # --------------------------------------------------------
 
-    result = _ocr.ocr(
-        str(image_path),
-        cls=True
+    result = OCR_ENGINE.ocr(
+        image,
+        cls=False
     )
 
-
-    lines = []
-
-
-    # --------------------------------------------------------
-    # PaddleOCR 2.x result format
-    # --------------------------------------------------------
-
-    if result and result[0]:
-
-        for item in result[0]:
-
-            if not item or len(item) < 2:
-
-                continue
-
-
-            box = item[0]
-
-            text_info = item[1]
-
-
-            if (
-                not text_info
-                or
-                len(text_info) < 2
-            ):
-
-                continue
-
-
-            text = str(
-                text_info[0]
-            ).strip()
-
-
-            confidence = float(
-                text_info[1]
-            )
-
-
-            if not text:
-
-                continue
-
-
-            lines.append({
-
-                "text":
-                    text,
-
-                "confidence":
-                    round(
-                        confidence,
-                        4
-                    ),
-
-                "box":
-                    box
-
-            })
-
-
-    # --------------------------------------------------------
-    # Reading order
-    # --------------------------------------------------------
-
-    lines.sort(
-
-        key=lambda item: (
-
-            min(
-                point[1]
-                for point in item["box"]
-            ),
-
-            min(
-                point[0]
-                for point in item["box"]
-            )
-
-        )
-
+    text_items = normalize_ocr_result(
+        result
     )
 
-
     # --------------------------------------------------------
-    # Combined text
+    # Build raw text
     # --------------------------------------------------------
 
     raw_text = "\n".join(
-
         item["text"]
-
-        for item in lines
-
+        for item in text_items
     )
 
+    # --------------------------------------------------------
+    # Quality statistics
+    # --------------------------------------------------------
+
+    confidences = [
+        item["confidence"]
+        for item in text_items
+        if item["confidence"] >= 0
+    ]
+
+    if confidences:
+
+        average_confidence = (
+            sum(confidences)
+            / len(confidences)
+        )
+
+        minimum_confidence = min(
+            confidences
+        )
+
+    else:
+
+        average_confidence = 0.0
+        minimum_confidence = 0.0
+
+    elapsed = (
+        time.perf_counter()
+        - start
+    )
+
+    print(
+        f"[OCR] {os.path.basename(image_path)} "
+        f"→ {len(text_items)} lines "
+        f"in {elapsed:.2f}s"
+    )
 
     return {
+        "success": True,
 
-        "success":
-            True,
+        "image": {
+            "width": width,
+            "height": height
+        },
 
-        "image":
-            str(image_path),
+        "text": text_items,
 
-        "line_count":
-            len(lines),
+        "raw_text": raw_text,
 
-        "text":
-            lines,
+        "ocr_quality": {
+            "average_confidence": round(
+                average_confidence,
+                4
+            ),
+            "minimum_confidence": round(
+                minimum_confidence,
+                4
+            ),
+            "confidence_count": len(
+                confidences
+            ),
+            "text_lines": len(
+                text_items
+            )
+        },
 
-        "raw_text":
-            raw_text
-
+        "timing": {
+            "ocr_seconds": round(
+                elapsed,
+                4
+            )
+        }
     }
 
 
 # ============================================================
-# COMMAND LINE MODE
-#
-# This is kept so your existing testing command still works:
-#
-# python app/ocr/module3_ocr.py image.jpg
-#
-# NOTE:
-# CLI mode still has to load the model each time because the
-# process itself ends.
-# The WEBSITE will NOT use this mode anymore.
+# COMMAND LINE TEST
 # ============================================================
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 2:
+    import sys
+
+    if len(sys.argv) < 2:
 
         print(
-            "Usage: "
-            "python app/ocr/module3_ocr.py <image>"
+            "Usage:"
+        )
+
+        print(
+            "python app/ocr/module3_ocr.py "
+            "image.jpg"
         )
 
         sys.exit(1)
-
 
     image_path = sys.argv[1]
 
+    result = extract_text(
+        image_path
+    )
 
-    try:
-
-        result = extract_text(
-            image_path
+    print(
+        json.dumps(
+            result,
+            indent=2,
+            ensure_ascii=False
         )
-
-
-        print(
-            json.dumps(
-                result,
-                indent=2,
-                ensure_ascii=False
-            )
-        )
-
-
-    except Exception as error:
-
-        print(
-            f"ERROR: {error}"
-        )
-
-        sys.exit(1)
+    )
