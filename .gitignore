@@ -1,11 +1,28 @@
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .DS_Store
+
+# Python environments and packaging
+.venv*/
+venv/
+env/
+*.egg-info/
 
 # Runtime/generated data
 storage/
 *.log
+
+# OCR/model caches
+.paddleocr/
+.paddlex/
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Environment/secrets
 .env

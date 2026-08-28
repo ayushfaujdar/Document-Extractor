@@ -1,9 +1,13 @@
-Flask
-Werkzeug
-Pillow
-pytesseract
+Flask==3.1.3
+Werkzeug==3.1.8
+Pillow==12.3.0
+pytesseract==0.3.13
+
+# Compatible OCR 2.x pair used by app/ocr/module3_ocr.py
 paddlepaddle==2.6.2
-paddleocr
-opencv-python
-numpy
-PyMuPDF
+paddleocr==2.10.0
+
+# PaddlePaddle 2.6.x uses the NumPy 1.x API.
+numpy==1.26.4
+opencv-python==4.11.0.86
+PyMuPDF==1.28.2
