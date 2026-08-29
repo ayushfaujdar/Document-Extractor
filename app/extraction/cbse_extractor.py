@@ -87,195 +87,11 @@ def load_ocr(path):
 
 
 # ============================================================
-# REGISTRATION NUMBER
-# ============================================================
-
-def extract_registration(items):
-
-    patterns = [
-        r"REGN\.?\s*NO\.?\s*([A-Z0-9/]+)",
-        r"REGN\s*NO\s*([A-Z0-9/]+)",
-        r"REGISTRATION\s*NO\.?\s*([A-Z0-9/]+)",
-    ]
-
-    for item in items:
-
-        text = item["text"].upper()
-
-        for pattern in patterns:
-
-            match = re.search(pattern, text)
-
-            if match:
-                return match.group(1)
-
-    return None
-
-
-# ============================================================
-# ROLL NUMBER
-# ============================================================
-
-def extract_roll_number(items):
-
-    for item in items:
-
-        match = re.search(
-            r"ROLL\s*NO\.?\s*([0-9]{6,10})",
-            item["text"],
-            re.I
-        )
-
-        if match:
-            return match.group(1)
-
-    return None
-
-
-# ============================================================
-# DATE OF BIRTH
-# ============================================================
-
-def extract_dob(items):
-    """
-    Extract DOB only from the OCR item containing the
-    Date of Birth label.
-
-    Example:
-        Date of Birth24/03/200424TH MARCH TWO THOUSANDFOUR
-
-    -> 24/03/2004
-
-    IMPORTANT:
-    We never search the entire document for the first date,
-    because that can incorrectly return the certificate date.
-    """
-
-    date_pattern = r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})"
-
-    for item in items:
-
-        text = clean_text(item["text"])
-
-        # Normalize common OCR errors.
-        normalized = re.sub(
-            r"\s+",
-            " ",
-            text.upper()
-        )
-
-        normalized = normalized.replace(
-            "0F",
-            "OF"
-        )
-
-        # Must contain the DOB label.
-        if not re.search(
-            r"DATE\s*OF\s*BIRTH|DATEOF\s*BIRTH",
-            normalized,
-            re.I
-        ):
-            continue
-
-        match = re.search(
-            date_pattern,
-            text
-        )
-
-        if match:
-            return match.group(1).replace(
-                "-",
-                "/"
-            )
-
-    return None
-
-# ============================================================
-# EXAMINATION YEAR
-# ============================================================
-
-def extract_exam_year(items):
-
-    for item in items:
-
-        text = clean_text(item["text"])
-
-        if re.search(
-            r"SECONDARY\s+SCHOOL\s+EXAMINATION",
-            text,
-            re.I
-        ):
-
-            years = re.findall(
-                r"\b(20\d{2})\b",
-                text
-            )
-
-            if years:
-                return years[-1]
-
-    return None
-
-
-# ============================================================
-# STUDENT NAME
-# ============================================================
-
-def extract_student_name(items):
-    """
-    CBSE certificate normally contains:
-
-        This is to certify that SHREYA THAKUR
-
-    Extract only the text after the certification phrase.
-    """
-
-    patterns = [
-        r"THIS\s+IS\s+TO\s+CERTIFY\s+THAT\s+(.+)",
-        r"CERTIFY\s+THAT\s+(.+)",
-    ]
-
-    for item in items:
-
-        text = clean_text(item["text"])
-
-        for pattern in patterns:
-
-            match = re.search(
-                pattern,
-                text,
-                re.I
-            )
-
-            if not match:
-                continue
-
-            name = clean_text(match.group(1))
-
-            # Remove anything that looks like the beginning
-            # of another field.
-            name = re.split(
-                r"\b(?:ROLL|ROLL\s*NO|MOTHER|FATHER|DATE|SCHOOL)\b",
-                name,
-                flags=re.I
-            )[0]
-
-            name = clean_text(name)
-
-            if 2 <= len(name) <= 80:
-
-                # Avoid obviously non-name OCR garbage.
-                if not re.search(
-                    r"\d",
-                    name
-                ):
-                    return name.upper()
-
-    return None
-
-
-# ============================================================
 # GENERIC COORDINATE FIELD EXTRACTION
+#
+# Moved above the field extractors that now depend on it.
+# (Python resolves this at call time either way, but keeping
+# it up top makes the read-order match the call-order.)
 # ============================================================
 
 def extract_labeled_value(
@@ -359,6 +175,277 @@ def extract_labeled_value(
 
         if candidates:
             return candidates[0][2]["text"]
+
+    return None
+
+
+# ============================================================
+# REGISTRATION NUMBER
+# ============================================================
+
+def extract_registration(items):
+
+    patterns = [
+        r"REGN\.?\s*NO\.?\s*([A-Z0-9/]+)",
+        r"REGN\s*NO\s*([A-Z0-9/]+)",
+        r"REGISTRATION\s*NO\.?\s*([A-Z0-9/]+)",
+    ]
+
+    for item in items:
+
+        text = item["text"].upper()
+
+        for pattern in patterns:
+
+            match = re.search(pattern, text)
+
+            if match:
+                return match.group(1)
+
+    # --------------------------------------------------------
+    # Fallback: label ("Regn.No.") and the value are separate
+    # OCR boxes. Very common — PaddleOCR frequently splits a
+    # printed label from a handwritten/filled value even when
+    # they sit on the same visual line.
+    # --------------------------------------------------------
+
+    value = extract_labeled_value(
+        items,
+        r"REGN\.?\s*NO\.?|REGISTRATION\s*NO\.?",
+        max_y_distance=25,
+    )
+
+    if value:
+
+        match = re.search(
+            r"([A-Z0-9/]+)",
+            value.upper()
+        )
+
+        if match:
+            return match.group(1)
+
+    return None
+
+
+# ============================================================
+# ROLL NUMBER
+# ============================================================
+
+def extract_roll_number(items):
+
+    for item in items:
+
+        match = re.search(
+            r"ROLL\s*NO\.?\s*([0-9]{6,10})",
+            item["text"],
+            re.I
+        )
+
+        if match:
+            return match.group(1)
+
+    # --------------------------------------------------------
+    # Fallback: "Roll No." and the number are separate boxes.
+    # --------------------------------------------------------
+
+    value = extract_labeled_value(
+        items,
+        r"ROLL\s*NO\.?",
+        max_y_distance=25,
+    )
+
+    if value:
+
+        match = re.search(
+            r"([0-9]{6,10})",
+            value
+        )
+
+        if match:
+            return match.group(1)
+
+    return None
+
+
+# ============================================================
+# DATE OF BIRTH
+# ============================================================
+
+def extract_dob(items):
+    """
+    Extract DOB only from the OCR item containing the
+    Date of Birth label.
+
+    Example:
+        Date of Birth24/03/200424TH MARCH TWO THOUSANDFOUR
+
+    -> 24/03/2004
+
+    IMPORTANT:
+    We never search the entire document for the first date,
+    because that can incorrectly return the certificate date.
+
+    NOTE: if the "Date of Birth" label never appears in the
+    OCR items at all, this is not something a regex fix can
+    solve — check the source scan / OCR crop for that field.
+    """
+
+    date_pattern = r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})"
+
+    for item in items:
+
+        text = clean_text(item["text"])
+
+        # Normalize common OCR errors.
+        normalized = re.sub(
+            r"\s+",
+            " ",
+            text.upper()
+        )
+
+        normalized = normalized.replace(
+            "0F",
+            "OF"
+        )
+
+        # Must contain the DOB label.
+        if not re.search(
+            r"DATE\s*OF\s*BIRTH|DATEOF\s*BIRTH",
+            normalized,
+            re.I
+        ):
+            continue
+
+        match = re.search(
+            date_pattern,
+            text
+        )
+
+        if match:
+            return match.group(1).replace(
+                "-",
+                "/"
+            )
+
+    return None
+
+# ============================================================
+# EXAMINATION YEAR
+# ============================================================
+
+def extract_exam_year(items):
+    """
+    Handles both the Class 10 title ("SECONDARY SCHOOL
+    EXAMINATION") and the Class 12 title ("SENIOR SCHOOL
+    CERTIFICATE EXAMINATION") — the original pattern only
+    covered Class 10.
+    """
+
+    title_pattern = re.compile(
+        r"SECONDARY\s+SCHOOL\s+EXAMINATION"
+        r"|SENIOR\s+SCHOOL\s+CERTIFICATE\s+EXAMINATION",
+        re.I
+    )
+
+    for item in items:
+
+        text = clean_text(item["text"])
+
+        if title_pattern.search(text):
+
+            years = re.findall(
+                r"\b(20\d{2})\b",
+                text
+            )
+
+            if years:
+                return years[-1]
+
+    return None
+
+
+# ============================================================
+# STUDENT NAME
+# ============================================================
+
+def extract_student_name(items):
+    """
+    CBSE certificate normally contains:
+
+        This is to certify that SHREYA THAKUR
+
+    Extract only the text after the certification phrase.
+    """
+
+    patterns = [
+        r"THIS\s+IS\s+TO\s+CERTIFY\s+THAT\s+(.+)",
+        r"CERTIFY\s+THAT\s+(.+)",
+    ]
+
+    for item in items:
+
+        text = clean_text(item["text"])
+
+        for pattern in patterns:
+
+            match = re.search(
+                pattern,
+                text,
+                re.I
+            )
+
+            if not match:
+                continue
+
+            name = clean_text(match.group(1))
+
+            # Remove anything that looks like the beginning
+            # of another field.
+            name = re.split(
+                r"\b(?:ROLL|ROLL\s*NO|MOTHER|FATHER|DATE|SCHOOL)\b",
+                name,
+                flags=re.I
+            )[0]
+
+            name = clean_text(name)
+
+            if 2 <= len(name) <= 80:
+
+                # Avoid obviously non-name OCR garbage.
+                if not re.search(
+                    r"\d",
+                    name
+                ):
+                    return name.upper()
+
+    # --------------------------------------------------------
+    # Fallback: "This is to certify that" and the name are
+    # separate OCR boxes (common — the blank is often a
+    # differently-styled run of text, so PaddleOCR splits it
+    # from the printed label even on the same line).
+    # --------------------------------------------------------
+
+    value = extract_labeled_value(
+        items,
+        r"CERTIFY\s+THAT",
+        max_y_distance=25,
+    )
+
+    if value:
+
+        name = clean_text(value)
+
+        if (
+            2 <= len(name) <= 80
+            and not re.search(r"\d", name)
+            and not re.search(
+                r"\b(?:ROLL|MOTHER|FATHER|DATE|SCHOOL|REGN)\b",
+                name,
+                re.I
+            )
+        ):
+            return name.upper()
 
     return None
 
@@ -591,6 +678,14 @@ def extract_school_name(items):
     # Do not search for any random capitalized text.
     #
     # First find the actual SCHOOL label.
+    #
+    # NOTE: exam titles vary by class/year — "SECONDARY SCHOOL
+    # EXAMINATION" (Class 10) vs "SENIOR SCHOOL CERTIFICATE
+    # EXAMINATION" (Class 12) vs whatever future wording CBSE
+    # uses. Rather than chase every wording variant, we reject
+    # any "SCHOOL"-containing line that's too long to be the
+    # actual field label — a real "School" label is a short
+    # word, not a title/sentence.
     # --------------------------------------------------------
 
     school_labels = []
@@ -606,18 +701,16 @@ def extract_school_name(items):
             item["text"]
         )
 
-        # Don't accidentally use:
-        # SECONDARY SCHOOL EXAMINATION
-        if re.search(
-            r"SECONDARY\s+SCHOOL\s+EXAMINATION",
-            text,
-            re.I
-        ):
+        if not school_regex.search(text):
             continue
 
-        if school_regex.search(text):
+        # Reject title/sentence-length matches (exam titles,
+        # board name, etc.) — keeps this robust across
+        # certificate versions without hardcoding every title.
+        if len(text) > 15:
+            continue
 
-            school_labels.append(item)
+        school_labels.append(item)
 
     # --------------------------------------------------------
     # CASE 1:
@@ -657,7 +750,8 @@ def extract_school_name(items):
 
             # Reject document-level phrases.
             if re.search(
-                r"SECONDARY\s+SCHOOL\s+EXAMINATION",
+                r"SECONDARY\s+SCHOOL\s+EXAMINATION"
+                r"|SENIOR\s+SCHOOL\s+CERTIFICATE\s+EXAMINATION",
                 value,
                 re.I
             ):
@@ -670,9 +764,15 @@ def extract_school_name(items):
             ):
                 continue
 
-            # A school name should not be just a year.
+            # A school name should not be just a year or a date.
             if re.fullmatch(
                 r"\d{4}",
+                value
+            ):
+                continue
+
+            if re.fullmatch(
+                r"\d{1,2}[/-]\d{1,2}[/-]\d{4}",
                 value
             ):
                 continue
@@ -729,7 +829,8 @@ def extract_school_name(items):
         )
 
         if re.search(
-            r"SECONDARY\s+SCHOOL\s+EXAMINATION",
+            r"SECONDARY\s+SCHOOL\s+EXAMINATION"
+            r"|SENIOR\s+SCHOOL\s+CERTIFICATE\s+EXAMINATION",
             value,
             re.I
         ):
@@ -744,6 +845,14 @@ def extract_school_name(items):
 
 # ============================================================
 # SUBJECT DEFINITIONS
+#
+# NOTE: this is only used as a display-name fallback now (see
+# extract_marks below). It is NOT used to decide whether a row
+# counts as a subject — that used to silently drop every
+# Class 12 subject, since Class 12 codes (301 English Core,
+# 037 Psychology, 042 Physics, 044 Biology, 500/502/503...)
+# aren't in this Class-10-oriented list. Keep adding codes
+# here over time, but don't rely on it for gating.
 # ============================================================
 
 CBSE_SUBJECTS = {
@@ -760,6 +869,13 @@ CBSE_SUBJECTS = {
     "165": "COMPUTER APPLICATIONS",
     "402": "INFORMATION TECHNOLOGY",
     "417": "ARTIFICIAL INTELLIGENCE",
+    "301": "ENGLISH CORE",
+    "037": "PSYCHOLOGY",
+    "042": "PHYSICS",
+    "044": "BIOLOGY",
+    "500": "WORK EXPERIENCE",
+    "502": "HEALTH & PHYSICAL EDUCATION",
+    "503": "GENERAL STUDIES",
 }
 
 
@@ -815,10 +931,18 @@ def extract_marks(items):
 
     We therefore map values by their X position instead of
     simply taking the first three numbers found on a row.
+
+    A row is treated as a real subject row when we find an
+    actual subject-name text next to the code (from OCR) OR
+    the code is a known CBSE_SUBJECTS key. Previously this
+    required the code to be a CBSE_SUBJECTS key regardless of
+    what was actually printed next to it, which silently
+    dropped every subject whose code wasn't in that (Class-10
+    oriented) dict — e.g. an entire Class 12 marksheet.
     """
 
     # --------------------------------------------------------
-    # Find subject-code candidates
+    # Find subject-code candidates: any bare 3-digit OCR item.
     # --------------------------------------------------------
 
     subject_items = []
@@ -831,9 +955,6 @@ def extract_marks(items):
             r"\d{3}",
             text
         ):
-            continue
-
-        if text not in CBSE_SUBJECTS:
             continue
 
         subject_items.append(item)
@@ -914,6 +1035,16 @@ def extract_marks(items):
             subject = CBSE_SUBJECTS.get(
                 code
             )
+
+        # ----------------------------------------------------
+        # Guard against false positives: a bare 3-digit number
+        # elsewhere on the page (page numbers, unrelated codes,
+        # noise) should not become a fake subject row unless we
+        # actually found or know a subject name for it.
+        # ----------------------------------------------------
+
+        if not subject:
+            continue
 
         # ----------------------------------------------------
         # NUMERIC COLUMN EXTRACTION
@@ -1031,6 +1162,12 @@ def extract_marks(items):
 
         # ----------------------------------------------------
         # Only create a marks row if actual marks exist.
+        #
+        # NOTE: grade-only subjects (e.g. Work Experience,
+        # Health & Physical Education, General Studies) print
+        # no theory/internal/total numbers at all — they are
+        # correctly skipped here rather than counted with a
+        # phantom total.
         # ----------------------------------------------------
 
         if (
