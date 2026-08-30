@@ -6,20 +6,20 @@ Document Extractor is a local Flask application that extracts structured data fr
 
 The supported development environment is Python 3.12. The recommended environment name below is separate from the old PaddlePaddle environment so the migration can be tested safely:
 
-~~~bash
+```bash
 brew install python@3.12
 python3.12 -m venv .venv312-ocr37
 source .venv312-ocr37/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip check
-~~~
+```
 
 PaddleOCR downloads its models on first use. The application defaults to the ignored project-local `.paddlex` cache. Start the server with:
 
-~~~bash
+```bash
 python main.py
-~~~
+```
 
 Open http://127.0.0.1:8000.
 
@@ -47,7 +47,7 @@ Uploads are limited to 50 MB by the server. The configured extensions are JPG, J
 
 ## Architecture
 
-~~~text
+```text
 Browser -> POST /api/upload -> main.py
                                |
                                |-- extension and size validation
@@ -57,13 +57,13 @@ Browser -> POST /api/upload -> main.py
                                |-- classifier.py
                                |-- document-specific extraction
                                |-- final JSON response
-~~~
+```
 
 main.py is the orchestration layer. It runs OCR in-process and invokes several extractors as subprocesses using the active Python interpreter.
 
 ## Repository map
 
-~~~text
+```text
 main.py                         Flask app and pipeline orchestration
 requirements.txt                Python dependency pins
 templates/index.html             Browser page
@@ -83,7 +83,7 @@ document_preprocessor.py        Standalone preprocessing utility
 images/                         Sample and intermediate images
 tests/                          Test support and versioned reference fixtures
 storage/                        Runtime jobs, ignored by Git
-~~~
+```
 
 The browser flow does not currently call app/detection/module2_detection.py, app/ocr/fast_ocr.py, app/ocr/quality_gate.py, app/ocr/feature_extractor.py, or app/validation/. Treat these as utilities or future integration points until main.py is updated.
 
@@ -109,28 +109,28 @@ Returns the HTML application.
 
 Send one file as multipart form data using the field name file:
 
-~~~bash
+```bash
 curl -X POST \
   -F "file=@images/marksheet.jpeg" \
   http://127.0.0.1:8000/api/upload
-~~~
+```
 
 Success responses contain success, status, upload_job_id, job_id, classification, ingestion, quality, and extraction fields. The common extraction fields are document_type, classification_confidence, student, school, academic_summary, marks, document_data, generic_fields, all_text, raw_text, and job_id.
 
 Status codes:
 
-| Code | Meaning |
-| --- | --- |
-| 200 | Document processed |
-| 400 | Missing file or unsupported extension |
-| 422 | Image rejected by quality checks |
-| 500 | OCR, conversion, or extraction error |
+| Code | Meaning                               |
+| ---- | ------------------------------------- |
+| 200  | Document processed                    |
+| 400  | Missing file or unsupported extension |
+| 422  | Image rejected by quality checks      |
+| 500  | OCR, conversion, or extraction error  |
 
 ## Runtime files
 
 Each upload creates a UUID job under storage/:
 
-~~~text
+```text
 storage/input/<upload_job_id>/<uploaded-file>
 storage/<job_id>/ingestion.json
 storage/<job_id>/pages/page_0001.jpg
@@ -144,36 +144,24 @@ storage/<job_id>/ocr/aadhaar_extracted_data.json
 storage/<job_id>/ocr/pan_extracted_data.json
 storage/<job_id>/ocr/generic_extracted_data.json
 storage/<job_id>/ocr/website_extraction.json   final web result
-~~~
+```
 
 Runtime files contain personal documents. The project currently has no database, authentication, encryption, cleanup, or retention policy.
-
-## Reference fixtures
-
-The `tests/references/` directory contains versioned sample OCR and extraction outputs used for comparison while improving parsers. These files are intentionally kept in the repository and are separate from ignored runtime jobs under `storage/`.
-
-~~~text
-tests/references/ocr_result.json
-tests/references/marks_result.json
-tests/references/marksheet_result.json
-tests/references/extracted_details.json
-tests/references/ocr_test.txt
-~~~
 
 ## Optional system dependencies
 
 DOCX uploads require LibreOffice because ingestion invokes the libreoffice command. The optional fast_ocr.py utility requires the Tesseract executable.
 
-~~~bash
+```bash
 brew install --cask libreoffice
 brew install tesseract
 command -v libreoffice
 tesseract --version
-~~~
+```
 
 ## Useful commands
 
-~~~bash
+```bash
 source .venv312-ocr37/bin/activate
 python -m compileall -q main.py app
 python -m pip check
@@ -185,7 +173,7 @@ python app/extraction/marks_parser.py path/to/ocr_result.json
 python app/extraction/aadhaar_extractor.py path/to/ocr_result.json
 python app/extraction/pan_extractor.py path/to/ocr_result.json
 python app/extraction/generic_extractor.py path/to/ocr_result.json
-~~~
+```
 
 Standalone utilities include app/validation/marks_validation.py, app/validation/document_verification.py, app/ocr/quality_gate.py, app/ocr/feature_extractor.py, app/ocr/fast_ocr.py, and app/detection/module2_detection.py. Each script prints its own Usage message.
 
