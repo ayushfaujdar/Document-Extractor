@@ -92,7 +92,7 @@ The browser flow does not currently call app/detection/module2_detection.py, app
 1. Upload validation checks the extension and the 50 MB request limit.
 2. Image quality checks dimensions, blur, and brightness for image uploads.
 3. Module 1 creates a UUID job, normalizes images to JPEG, renders PDF pages at 150 DPI, and converts DOCX to PDF through LibreOffice.
-4. Module 3 creates one global PaddleOCR 3.7 ONNX Runtime object and returns OCR lines with text, confidence, bounding boxes, and raw_text.
+4. Module 3 creates one global PaddleOCR 3.7 ONNX Runtime object and returns OCR lines with text, confidence, bounding boxes, and raw_text. On all Mac hardware (Intel and Apple Silicon) the CPU engine is used with up to 8 threads. On Linux/Windows with NVIDIA CUDA the CUDA provider is selected automatically.
 5. classifier.py returns document_type, confidence, decision, matching signals, and alternatives.
 6. main.py routes the result to the CBSE, marks, Aadhaar, PAN, or generic extractor.
 7. build_extraction() creates the common response object consumed by static/app.js.
@@ -199,7 +199,16 @@ Keep the OCR schema stable. Downstream code expects raw_text and line objects co
 
 - BMP is accepted by the web extension allowlist but is not explicitly handled by ingestion and may fail after upload.
 - PDF and DOCX files skip the pre-ingestion image quality check.
-- OCR is CPU-bound and can be slow, especially on first inference while models are downloaded and initialized. The default is one multi-page worker plus ONNX Runtime CPU threading. Set `OCR_INTRA_OP_THREADS` to tune a single page, or set `OCR_WORKERS` only after benchmarking multi-page jobs on the target Mac.
+- OCR performance scales automatically. On **all Mac hardware (Intel and Apple Silicon)** and CPU-only machines, ONNX Runtime CPU is used with up to 8 threads — twice the previous default. On **Linux/Windows with NVIDIA CUDA** the CUDA provider is selected automatically with a batch size of 16. CoreML is intentionally excluded from auto-detection: PP-OCRv6 has ~21 unsupported ops that cause 20 graph partitions, making CoreML 3–5× slower than CPU-only on this model. Control this with environment variables:
+
+  | Variable | Default | Description |
+  |---|---|---|
+  | `OCR_USE_GPU` | `auto` | `auto` — try CUDA/DirectML, fall back to CPU; `true` — require GPU or raise; `false` — always CPU; `coreml` — force CoreML (experimental) |
+  | `OCR_INTRA_OP_THREADS` | `2` (GPU) / `min(8, cpu_count)` (CPU) | ONNX Runtime intra-op thread count for one page |
+  | `OCR_RECOGNITION_BATCH_SIZE` | `16` (GPU) / `6` (CPU) | Recognition crops processed per batch |
+  | `OCR_WORKERS` | `1` | Parallel page workers — benchmark before increasing |
+
+  The startup log always reports which backend is active, e.g. `[OCR] Backend: CPUExecutionProvider — no GPU provider found`.
 - Text-line orientation is disabled by default for upright documents to save an inference stage. Set `OCR_USE_TEXTLINE_ORIENTATION=true` when rotated text is common and the quality benefit justifies the extra latency.
 - Flask runs with debug disabled by default so the OCR model is loaded once. Set `FLASK_DEBUG=true` only during development; its reloader intentionally loads the application twice.
 - ModuleNotFoundError: cv2 or paddleocr usually means the wrong interpreter is active. Activate `.venv312-ocr37` and reinstall requirements.txt.

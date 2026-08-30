@@ -3,7 +3,20 @@
 The application uses PaddleOCR 3.x with its native ONNX Runtime engine.
 Keeping the PaddleOCR call and result conversion here gives the rest of the
 application a stable, small OCR schema while allowing the engine to evolve.
+
+GPU / accelerator support
+--------------------------
+Set ``OCR_USE_GPU`` to control which ONNX Runtime execution provider is used:
+
+* ``auto``  (default) — try CUDA or DirectML and fall back to CPU.
+  CoreML is excluded from auto-detection: PP-OCRv6 has ~21 unsupported ops
+  which split the graph into ~20 partitions, making CPU<->CoreML transfers
+  3-5x slower than running everything on CPU.
+* ``coreml`` — force CoreML on Apple Silicon (experimental; expect slowdown).
+* ``true``   — require a GPU provider (CUDA/DirectML); raise if none found.
+* ``false``  — always use CPUExecutionProvider regardless of hardware.
 """
+
 
 from __future__ import annotations
 
@@ -32,6 +45,10 @@ OCR_USE_TEXTLINE_ORIENTATION = (
     in {"1", "true", "yes", "on"}
 )
 
+# OCR_USE_GPU controls which ONNX Runtime execution provider is used.
+# Values: "auto" (default), "true" (require GPU), "false" (force CPU).
+OCR_USE_GPU = os.getenv("OCR_USE_GPU", "auto").strip().lower()
+
 
 def _positive_int_env(name: str, default: int) -> int:
     """Read a positive integer setting, falling back safely on bad input."""
@@ -44,19 +61,130 @@ def _positive_int_env(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
-# A single OCR session lets ONNX Runtime manage CPU parallelism without
-# oversubscribing the machine. Override this after benchmarking a target Mac.
-DEFAULT_THREADS = min(4, max(1, os.cpu_count() or 1))
-OCR_INTRA_OP_THREADS = _positive_int_env(
-    "OCR_INTRA_OP_THREADS",
-    DEFAULT_THREADS,
-)
+def _detect_gpu_provider() -> tuple[str | None, str]:
+    """Return the best available GPU execution provider and a reason string.
 
+    Returns a ``(provider_name, reason)`` tuple where ``provider_name`` is
+    ``None`` when no GPU provider is available.
+    """
+    try:
+        import onnxruntime as ort
+        available = ort.get_available_providers()
+    except Exception:
+        return None, "onnxruntime not importable"
+
+    # Priority order: CUDA (Linux/Windows) → DirectML (Windows)
+    # CoreML is intentionally excluded from auto-detection: PP-OCRv6 has
+    # ~21 ops unsupported by CoreML which causes ONNX Runtime to split the
+    # graph into ~20 partitions, making CPU↔CoreML tensor transfers far
+    # slower than running everything on CPU. Force it with OCR_USE_GPU=coreml
+    # if you want to experiment.
+    candidates = [
+        ("CUDAExecutionProvider", "NVIDIA CUDA GPU"),
+        ("DmlExecutionProvider",  "DirectML GPU (Windows)"),
+    ]
+
+    for provider, label in candidates:
+        if provider in available:
+            return provider, label
+
+    return None, "no GPU provider found in: " + ", ".join(available)
+
+
+def _build_engine_config() -> tuple[dict, str, int, int]:
+    """Build the ONNX Runtime engine_config dict.
+
+    Returns ``(engine_config, active_provider, intra_op_threads, batch_size)``.
+    The caller uses the latter two values to set PaddleOCR parameters so that
+    CPU threads and recognition batch size are tuned to the chosen backend.
+    """
+    cpu_count = os.cpu_count() or 1
+
+    # ------------------------------------------------------------------ #
+    # Determine provider list based on OCR_USE_GPU                        #
+    # ------------------------------------------------------------------ #
+    if OCR_USE_GPU == "false":
+        # User explicitly wants CPU — skip detection entirely.
+        providers = ["CPUExecutionProvider"]
+        active_provider = "CPUExecutionProvider"
+        reason = "OCR_USE_GPU=false (forced CPU)"
+
+    elif OCR_USE_GPU == "coreml":
+        # User explicitly wants CoreML — useful for experimentation on Apple
+        # Silicon even though auto-mode skips it due to graph partitioning.
+        providers = ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+        active_provider = "CoreMLExecutionProvider"
+        reason = "OCR_USE_GPU=coreml (forced, expect graph-partition warnings)"
+
+    elif OCR_USE_GPU == "true":
+        # User requires GPU — raise if none available.
+        gpu_provider, reason = _detect_gpu_provider()
+        if gpu_provider is None:
+            raise RuntimeError(
+                f"[OCR] OCR_USE_GPU=true but no GPU provider found. "
+                f"Reason: {reason}. "
+                "Set OCR_USE_GPU=auto or OCR_USE_GPU=false to fall back to CPU."
+            )
+        providers = [gpu_provider, "CPUExecutionProvider"]
+        active_provider = gpu_provider
+
+    else:  # "auto" (default)
+        gpu_provider, reason = _detect_gpu_provider()
+        if gpu_provider is not None:
+            providers = [gpu_provider, "CPUExecutionProvider"]
+            active_provider = gpu_provider
+        else:
+            providers = ["CPUExecutionProvider"]
+            active_provider = "CPUExecutionProvider"
+
+    # ------------------------------------------------------------------ #
+    # Tune threads and batch size to the chosen backend                   #
+    # ------------------------------------------------------------------ #
+    using_gpu = active_provider != "CPUExecutionProvider"
+
+    if using_gpu:
+        # GPU handles the heavy inference; CPU threads are only for pre/post-
+        # processing, so a small number avoids oversubscription.
+        default_threads = min(2, cpu_count)
+        default_batch = 16
+    else:
+        # CPU-only: use more threads to saturate multi-core machines.
+        default_threads = min(8, max(1, cpu_count))
+        default_batch = 6
+
+    intra_op_threads = _positive_int_env("OCR_INTRA_OP_THREADS", default_threads)
+    batch_size = _positive_int_env("OCR_RECOGNITION_BATCH_SIZE", default_batch)
+
+    engine_config = {
+        "onnxruntime": {
+            "providers": providers,
+            "intra_op_num_threads": intra_op_threads,
+            "inter_op_num_threads": 1,
+            "execution_mode": "sequential",
+            # ONNX Runtime's ORT_ENABLE_ALL enum is represented by 99.
+            "graph_optimization_level": 99,
+        }
+    }
+
+    return engine_config, active_provider, intra_op_threads, batch_size, reason
+
+
+# ------------------------------------------------------------------ #
+# Build engine config and log the chosen backend before model load    #
+# ------------------------------------------------------------------ #
+(
+    _ENGINE_CONFIG,
+    _ACTIVE_PROVIDER,
+    OCR_INTRA_OP_THREADS,
+    _BATCH_SIZE,
+    _PROVIDER_REASON,
+) = _build_engine_config()
 
 print(
-    "[OCR] Loading PaddleOCR "
-    f"{OCR_VERSION} with ONNX Runtime "
-    f"({OCR_INTRA_OP_THREADS} CPU threads)..."
+    f"[OCR] Backend  : {_ACTIVE_PROVIDER} — {_PROVIDER_REASON}\n"
+    f"[OCR] Threads  : {OCR_INTRA_OP_THREADS} intra-op CPU thread(s)\n"
+    f"[OCR] Batch    : {_BATCH_SIZE} recognition crops per batch\n"
+    f"[OCR] Loading PaddleOCR {OCR_VERSION} ..."
 )
 
 OCR_ENGINE = PaddleOCR(
@@ -72,20 +200,11 @@ OCR_ENGINE = PaddleOCR(
     text_det_box_thresh=0.5,
     text_det_unclip_ratio=1.6,
     text_rec_score_thresh=0.0,
-    text_recognition_batch_size=6,
-    engine_config={
-        "onnxruntime": {
-            "providers": ["CPUExecutionProvider"],
-            "intra_op_num_threads": OCR_INTRA_OP_THREADS,
-            "inter_op_num_threads": 1,
-            "execution_mode": "sequential",
-            # ONNX Runtime's ORT_ENABLE_ALL enum is represented by 99.
-            "graph_optimization_level": 99,
-        }
-    },
+    text_recognition_batch_size=_BATCH_SIZE,
+    engine_config=_ENGINE_CONFIG,
 )
 
-print("[OCR] PaddleOCR model loaded.")
+print(f"[OCR] PaddleOCR model loaded. Active provider: {_ACTIVE_PROVIDER}")
 
 
 def prepare_image(image_path: str | os.PathLike[str]):
@@ -206,48 +325,6 @@ def _normalize_v3_result(result: Any) -> list[dict[str, Any]]:
     return output
 
 
-def _normalize_legacy_result(result: Any) -> list[dict[str, Any]]:
-    """Keep compatibility with old saved 2.x-shaped OCR data."""
-
-    output = []
-    pages = result if isinstance(result, (list, tuple)) else [result]
-
-    for page in pages:
-        if not isinstance(page, (list, tuple)):
-            continue
-
-        for item in page:
-            if not isinstance(item, (list, tuple)) or len(item) < 2:
-                continue
-
-            box, recognition = item[0], item[1]
-            if not isinstance(recognition, (list, tuple)) or len(recognition) < 2:
-                continue
-
-            text = str(recognition[0]).strip()
-            if not text:
-                continue
-
-            try:
-                confidence = float(recognition[1])
-            except (TypeError, ValueError):
-                confidence = 0.0
-
-            output.append({
-                "text": text,
-                "confidence": confidence,
-                "box": _normalize_box(box),
-            })
-
-    return output
-
-
-def normalize_ocr_result(result: Any) -> list[dict[str, Any]]:
-    """Return OCR lines with stable text, confidence, and polygon fields."""
-
-    normalized = _normalize_v3_result(result)
-    return normalized if normalized else _normalize_legacy_result(result)
-
 
 def _build_response(
     image,
@@ -258,7 +335,7 @@ def _build_response(
     """Build the stable response consumed by classifiers and extractors."""
 
     height, width = image.shape[:2]
-    text_items = normalize_ocr_result(result)
+    text_items = _normalize_v3_result(result)
     raw_text = "\n".join(item["text"] for item in text_items)
 
     confidences = [
@@ -284,7 +361,7 @@ def _build_response(
         "image": {"width": width, "height": height},
         "text": text_items,
         "raw_text": raw_text,
-        "ocr_engine": "paddleocr-3.7-onnxruntime",
+        "ocr_engine": f"paddleocr-3.7-onnxruntime-{_ACTIVE_PROVIDER.lower().replace('executionprovider', '')}",
         "ocr_model": OCR_VERSION,
         "ocr_quality": {
             "average_confidence": round(average_confidence, 4),
